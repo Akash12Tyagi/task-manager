@@ -1,12 +1,15 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL,
   timeout: 10000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  withCredentials: true,
 });
 
-// Attach token automatically to every request
+// Attach token automatically
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('ttm_token');
@@ -30,7 +33,7 @@ api.interceptors.response.use(
       error.message ||
       'Something went wrong';
 
-    // Logout if unauthorized
+    // Auto logout on unauthorized
     if (error.response?.status === 401) {
       localStorage.removeItem('ttm_token');
 
