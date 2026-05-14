@@ -12,7 +12,7 @@ const app = express();
 // Middleware
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  "http://localhost:5173",
+  "https://task-manager-i8j3.vercel.app",
 ].filter(Boolean);
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
