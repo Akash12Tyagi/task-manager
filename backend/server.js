@@ -14,10 +14,12 @@ const allowedOrigins = [
   process.env.FRONTEND_URL,
   "https://task-manager-i8j3.vercel.app",
 ].filter(Boolean);
+
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(express.json());
 app.use(morgan("dev"));
 
+// Database connection middleware
 const ensureDB = async (req, res, next) => {
   if (mongoose.connection.readyState === 1) {
     return next();
@@ -34,6 +36,7 @@ const ensureDB = async (req, res, next) => {
   return next();
 };
 
+// Root route
 app.get("/", (req, res) => {
   res.json({ status: "OK", message: "Team Task Manager API is running" });
 });
@@ -48,20 +51,29 @@ app.get("/api/health", (req, res) =>
   res.json({ status: "OK", timestamp: new Date() }),
 );
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(err.status || 500).json({
+// 404 handler for unknown routes
+app.use((req, res) => {
+  res.status(404).json({
     success: false,
-    message: err.message || "Internal Server Error",
+    message: "Route not found",
   });
 });
 
-// Keep this for local dev
-// Local development
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error("Error:", err.stack);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || "Internal Server Error",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
+});
+
+// Local development server
 if (process.env.NODE_ENV !== "production") {
   const PORT = process.env.PORT || 5003;
-  app.listen(PORT, () => console.log(`🚀 Server on port ${PORT}`));
+  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 }
 
+// Export for Vercel serverless function
 module.exports = app;

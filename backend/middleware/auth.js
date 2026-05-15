@@ -24,4 +24,5 @@ const protect = async (req, res, next) => {
   }
 };
 
+// FIXED: Export as object so destructuring works
 module.exports = { protect };

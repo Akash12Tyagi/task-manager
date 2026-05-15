@@ -1,10 +1,14 @@
 const express = require('express');
-const { body }  = require('express-validator');
-const router    = express.Router();
+const { body } = require('express-validator');
+const router = express.Router();
 const { protect } = require('../middleware/auth');
 const { register, login, getMe, getAllUsers } = require('../controllers/authController');
 
-router.post('/register',
+// @route   POST /api/auth/register
+// @desc    Register new user
+// @access  Public
+router.post(
+  '/register',
   [
     body('name').trim().notEmpty().isLength({ min: 2, max: 50 }),
     body('email').isEmail().normalizeEmail(),
@@ -14,7 +18,11 @@ router.post('/register',
   register
 );
 
-router.post('/login',
+// @route   POST /api/auth/login
+// @desc    Login user
+// @access  Public
+router.post(
+  '/login',
   [
     body('email').isEmail().normalizeEmail(),
     body('password').notEmpty(),
@@ -22,7 +30,14 @@ router.post('/login',
   login
 );
 
-router.get('/me',    protect, getMe);
+// @route   GET /api/auth/me
+// @desc    Get current user profile
+// @access  Private
+router.get('/me', protect, getMe);
+
+// @route   GET /api/auth/users
+// @desc    Get all users (for task assignment)
+// @access  Private
 router.get('/users', protect, getAllUsers);
 
 module.exports = router;
