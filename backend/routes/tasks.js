@@ -12,7 +12,7 @@ const {
   deleteTask,
 } = require('../controllers/taskController');
 
-router.get('/', protect, getAllTasks);
+
 // @route   GET /api/tasks/dashboard
 // @desc    Get dashboard stats
 // @access  Private
@@ -22,23 +22,23 @@ router.get('/stats/dashboard', protect, getDashboardStats);
 // @route   GET /api/tasks/my-tasks
 // @desc    Get my assigned tasks
 // @access  Private
-router.get('/my-tasks', protect, getMyTasks);
+router.get('tasks/my-tasks', protect, getMyTasks);
 
 // @route   GET /api/tasks/project/:projectId
 // @desc    Get all tasks for a specific project
 // @access  Private (project member)
-router.get('/project/:projectId', protect, getProjectTasks);
+router.get('/tasks/project/:projectId', protect, getProjectTasks);
 
 // @route   GET /api/tasks/:id
 // @desc    Get single task
 // @access  Private (project member)
-router.get('/:id', protect, getTask);
+router.get('/tasks/:id', protect, getTask);
 
 // @route   POST /api/tasks
 // @desc    Create new task
 // @access  Private (project member)
 router.post(
-  '/',
+  '/tasks',
   protect,
   [
     body('title').trim().notEmpty().isLength({ min: 2, max: 150 }),
@@ -57,7 +57,7 @@ router.post(
 // @desc    Update task
 // @access  Private (assignee or project admin)
 router.put(
-  '/:id',
+  '/tasks/:id',
   protect,
   [
     body('title').optional().trim().isLength({ min: 2, max: 150 }),
@@ -74,6 +74,6 @@ router.put(
 // @route   DELETE /api/tasks/:id
 // @desc    Delete task
 // @access  Admin / Project Admin
-router.delete('/:id', protect, deleteTask);
+router.delete('/tasks/:id', protect, deleteTask);
 
 module.exports = router;
