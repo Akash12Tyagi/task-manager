@@ -5,7 +5,7 @@ import { projectService } from '../services/projectService';
 import Modal from '../components/common/Modal';
 
 const PALETTE = ['#C8F135','#4D9EFF','#00E5AA','#FF3B55','#A855F7','#FFB000','#FF6B9D'];
-const STATUS_C = { planning:'var(--muted)',active:'var(--teal)','on-hold':'var(--amber)',completed:'var(--dim)' };
+const STATUS_C = { active:'var(--teal)','on-hold':'var(--amber)',completed:'var(--dim)',archived:'var(--muted)' };
 
 function ProjCard({ project, onDelete, isAdmin }) {
   const tc    = project.taskCounts||{};
@@ -35,7 +35,8 @@ function ProjCard({ project, onDelete, isAdmin }) {
           )}
         </div>
 
-        <div className="proj-card-name">{project.name}</div>
+        {/* FIX 3: was project.name, backend returns project.title */}
+        <div className="proj-card-name">{project.title}</div>
         <div className="proj-card-desc">{project.description||'No description provided.'}</div>
 
         <div className="proj-card-progress">
@@ -75,7 +76,15 @@ export default function Projects() {
   const [search, setSearch]     = useState('');
   const [modal, setModal]       = useState(false);
   const [saving, setSaving]     = useState(false);
-  const [form, setForm] = useState({name:'',description:'',status:'planning',priority:'medium',dueDate:'',color:PALETTE[0]});
+
+  // FIX 1: renamed name→title  |  FIX 2: removed 'planning', default to 'active'
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    status: 'active',
+    deadline: '',
+    color: PALETTE[0]
+  });
 
   const load = useCallback(async()=>{
     try {
@@ -90,9 +99,17 @@ export default function Projects() {
   const handleCreate = async(e)=>{
     e.preventDefault(); setSaving(true);
     try {
-      await projectService.create(form);
+      // Send only fields the backend knows about
+      const payload = {
+        title:       form.title,
+        description: form.description || undefined,
+        status:      form.status,
+        deadline:    form.deadline    || undefined,
+        color:       form.color,
+      };
+      await projectService.create(payload);
       setModal(false);
-      setForm({name:'',description:'',status:'planning',priority:'medium',dueDate:'',color:PALETTE[0]});
+      setForm({ title:'', description:'', status:'active', deadline:'', color:PALETTE[0] });
       load();
     } catch(err){ setErr(err.message); }
     finally { setSaving(false); }
@@ -148,46 +165,40 @@ export default function Projects() {
         <form onSubmit={handleCreate} className="modal-form">
           <div className="field">
             <label className="field-label">Project Name *</label>
-            <input className="input" value={form.name} onChange={set('name')} placeholder="e.g. Website Redesign" required/>
+            {/* FIX 1: value bound to form.title, onChange updates 'title' key */}
+            <input className="input" value={form.title} onChange={set('title')}
+              placeholder="e.g. Website Redesign" required/>
           </div>
           <div className="field">
             <label className="field-label">Description</label>
-            <textarea className="input" value={form.description} onChange={set('description')} placeholder="What's this project about?" rows={3}/>
+            <textarea className="input" value={form.description} onChange={set('description')}
+              placeholder="What's this project about?" rows={3}/>
           </div>
           <div className="form-row">
             <div className="field">
               <label className="field-label">Status</label>
+              {/* FIX 2: removed 'planning', only valid backend statuses */}
               <select className="input input--select" value={form.status} onChange={set('status')}>
-                <option value="planning">Planning</option>
                 <option value="active">Active</option>
                 <option value="on-hold">On Hold</option>
                 <option value="completed">Completed</option>
+                <option value="archived">Archived</option>
               </select>
             </div>
-            <div className="field">
-              <label className="field-label">Priority</label>
-              <select className="input input--select" value={form.priority} onChange={set('priority')}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-          </div>
-          <div className="form-row">
             <div className="field">
               <label className="field-label">Due Date</label>
-              <input className="input" type="date" value={form.dueDate} onChange={set('dueDate')}/>
+              <input className="input" type="date" value={form.deadline} onChange={set('deadline')}/>
             </div>
-            <div className="field">
-              <label className="field-label">Project Color</label>
-              <div className="color-row">
-                {PALETTE.map(c=>(
-                  <button key={c} type="button"
-                    className={`color-swatch${form.color===c?' picked':''}`}
-                    style={{background:c}}
-                    onClick={()=>setForm(f=>({...f,color:c}))}/>
-                ))}
-              </div>
+          </div>
+          <div className="field">
+            <label className="field-label">Project Color</label>
+            <div className="color-row">
+              {PALETTE.map(c=>(
+                <button key={c} type="button"
+                  className={`color-swatch${form.color===c?' picked':''}`}
+                  style={{background:c}}
+                  onClick={()=>setForm(f=>({...f,color:c}))}/>
+              ))}
             </div>
           </div>
           <div className="modal-actions">
