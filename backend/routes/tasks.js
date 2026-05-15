@@ -12,21 +12,33 @@ const {
   deleteTask,
 } = require('../controllers/taskController');
 
-// GET /api/tasks/dashboard
-router.get('/dashboard', protect, getDashboardStats);
 
-// GET /api/tasks/my-tasks
-router.get('/my-tasks', protect, getMyTasks);          // was 'tasks/my-tasks' — missing leading slash too
+// @route   GET /api/tasks/dashboard
+// @desc    Get dashboard stats
+// @access  Private
+// NOTE: This must come BEFORE /:id route to avoid conflicts
+router.get('/stats/dashboard', protect, getDashboardStats);
 
-// GET /api/tasks/project/:projectId
-router.get('/project/:projectId', protect, getProjectTasks);
+// @route   GET /api/tasks/my-tasks
+// @desc    Get my assigned tasks
+// @access  Private
+router.get('tasks/my-tasks', protect, getMyTasks);
 
-// GET /api/tasks/:id
-router.get('/:id', protect, getTask);
+// @route   GET /api/tasks/project/:projectId
+// @desc    Get all tasks for a specific project
+// @access  Private (project member)
+router.get('/tasks/project/:projectId', protect, getProjectTasks);
 
-// POST /api/tasks
+// @route   GET /api/tasks/:id
+// @desc    Get single task
+// @access  Private (project member)
+router.get('/tasks/:id', protect, getTask);
+
+// @route   POST /api/tasks
+// @desc    Create new task
+// @access  Private (project member)
 router.post(
-  '/',
+  '/tasks',
   protect,
   [
     body('title').trim().notEmpty().isLength({ min: 2, max: 150 }),
@@ -41,9 +53,11 @@ router.post(
   createTask
 );
 
-// PUT /api/tasks/:id
+// @route   PUT /api/tasks/:id
+// @desc    Update task
+// @access  Private (assignee or project admin)
 router.put(
-  '/:id',
+  '/tasks/:id',
   protect,
   [
     body('title').optional().trim().isLength({ min: 2, max: 150 }),
@@ -57,7 +71,9 @@ router.put(
   updateTask
 );
 
-// DELETE /api/tasks/:id
-router.delete('/:id', protect, deleteTask);
+// @route   DELETE /api/tasks/:id
+// @desc    Delete task
+// @access  Admin / Project Admin
+router.delete('/tasks/:id', protect, deleteTask);
 
 module.exports = router;
