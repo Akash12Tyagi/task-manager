@@ -2,6 +2,27 @@ const { validationResult } = require('express-validator');
 const Task    = require('../models/Task');
 const Project = require('../models/Project');
 
+// @desc    Get all tasks (admin sees all, members see assigned)
+// @route   GET /api/tasks
+// @access  Private
+exports.getAllTasks = async (req, res, next) => {
+  try {
+    const query = req.user.role === 'admin'
+      ? {}
+      : { assignedTo: req.user._id };
+
+    const tasks = await Task.find(query)
+      .populate('assignedTo', 'name email')
+      .populate('project', 'title color')
+      .populate('createdBy', 'name email')
+      .sort('-createdAt');
+
+    res.json({ success: true, count: tasks.length, tasks });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc    Get tasks for a project
 // @route   GET /api/tasks/project/:projectId
 // @access  Private (project member)
@@ -64,14 +85,14 @@ exports.getDashboardStats = async (req, res, next) => {
 
     const now = new Date();
     const stats = {
-      totalTasks:   tasks.length,
-      todo:         tasks.filter(t => t.status === 'todo').length,
-      inProgress:   tasks.filter(t => t.status === 'in-progress').length,
-      review:       tasks.filter(t => t.status === 'review').length,
-      done:         tasks.filter(t => t.status === 'done').length,
-      overdue:      tasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'done').length,
+      totalTasks:    tasks.length,
+      todo:          tasks.filter(t => t.status === 'todo').length,
+      inProgress:    tasks.filter(t => t.status === 'in-progress').length,
+      review:        tasks.filter(t => t.status === 'review').length,
+      done:          tasks.filter(t => t.status === 'done').length,
+      overdue:       tasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'done').length,
       totalProjects: projects.length,
-      recentTasks:  tasks.slice(0, 5),
+      recentTasks:   tasks.slice(0, 5),
     };
 
     res.json({ success: true, stats });
@@ -122,7 +143,6 @@ exports.createTask = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Not a member of this project' });
     }
 
-    // Only admin/project-admin can assign to others
     const isProjectAdmin = proj.admin.toString() === req.user._id.toString();
     let finalAssignee = req.user._id;
     if (assignedTo && (isProjectAdmin || req.user.role === 'admin')) {
@@ -165,17 +185,17 @@ exports.updateTask = async (req, res, next) => {
 
     const { title, description, status, priority, dueDate, assignedTo, tags } = req.body;
 
-    // Members can only update status of their own tasks
     if (isAssignee && !isProjectAdmin && !isGlobalAdmin) {
+      // Members can only update status of their own tasks
       if (status) task.status = status;
     } else {
-      if (title)       task.title       = title;
+      if (title)                     task.title       = title;
       if (description !== undefined) task.description = description;
-      if (status)      task.status      = status;
-      if (priority)    task.priority    = priority;
-      if (dueDate)     task.dueDate     = dueDate;
-      if (assignedTo)  task.assignedTo  = assignedTo;
-      if (tags)        task.tags        = tags;
+      if (status)                    task.status      = status;
+      if (priority)                  task.priority    = priority;
+      if (dueDate)                   task.dueDate     = dueDate;
+      if (assignedTo)                task.assignedTo  = assignedTo;
+      if (tags)                      task.tags        = tags;
     }
 
     await task.save();
