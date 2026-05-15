@@ -1,260 +1,409 @@
-const express = require('express');
-const router = express.Router();
-const { body, validationResult } = require('express-validator');
+const { validationResult } = require('express-validator');
 const Project = require('../models/Project');
 const Task = require('../models/Task');
 const User = require('../models/User');
-const { protect } = require('../middleware/auth');
-const { requireProjectAdmin, requireProjectMember } = require('../middleware/roleCheck');
 
-// @route   GET /api/projects
 // @desc    Get all projects for current user
+// @route   GET /api/projects
 // @access  Private
-router.get('/', protect, async (req, res) => {
+exports.getProjects = async (req, res, next) => {
   try {
-    const { status, priority, search } = req.query;
-
-    let query = {
-      $or: [
-        { owner: req.user._id },
-        { 'members.user': req.user._id },
-      ],
-    };
-
-    if (status) query.status = status;
-    if (priority) query.priority = priority;
-    if (search) query.name = { $regex: search, $options: 'i' };
-
-    // Global admins see all projects
-    if (req.user.role === 'admin') {
-      query = {};
-      if (status) query.status = status;
-      if (priority) query.priority = priority;
-      if (search) query.name = { $regex: search, $options: 'i' };
-    }
+    const query =
+      req.user.role === 'admin'
+        ? {}
+        : { 'members.user': req.user._id };
 
     const projects = await Project.find(query)
-      .populate('owner', 'name email')
+      .populate('admin', 'name email')
       .populate('members.user', 'name email role')
-      .sort({ createdAt: -1 });
+      .sort('-createdAt');
 
-    // Attach task counts
-    const projectsWithCounts = await Promise.all(
-      projects.map(async (project) => {
-        const taskCounts = await Task.aggregate([
-          { $match: { project: project._id } },
-          { $group: { _id: '$status', count: { $sum: 1 } } },
-        ]);
-        const counts = { todo: 0, 'in-progress': 0, review: 0, done: 0, total: 0 };
-        taskCounts.forEach(({ _id, count }) => {
-          counts[_id] = count;
-          counts.total += count;
-        });
-        return { ...project.toJSON(), taskCounts: counts };
-      })
-    );
-
-    res.json({ projects: projectsWithCounts, total: projectsWithCounts.length });
-  } catch (error) {
-    console.error('Get projects error:', error);
-    res.status(500).json({ message: 'Server error fetching projects' });
+    res.json({
+      success: true,
+      count: projects.length,
+      projects,
+    });
+  } catch (err) {
+    next(err);
   }
-});
+};
 
-// @route   POST /api/projects
-// @desc    Create a new project
-// @access  Private
-router.post(
-  '/',
-  protect,
-  [
-    body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Name must be 2-100 characters'),
-    body('description').optional().trim().isLength({ max: 500 }),
-    body('status').optional().isIn(['planning', 'active', 'on-hold', 'completed']),
-    body('priority').optional().isIn(['low', 'medium', 'high']),
-    body('dueDate').optional().isISO8601().withMessage('Invalid date format'),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    }
-
-    try {
-      const { name, description, status, priority, dueDate, tags } = req.body;
-
-      const project = await Project.create({
-        name,
-        description,
-        status: status || 'planning',
-        priority: priority || 'medium',
-        dueDate,
-        tags: tags || [],
-        owner: req.user._id,
-        members: [{ user: req.user._id, role: 'admin' }],
-      });
-
-      await project.populate('owner', 'name email');
-      await project.populate('members.user', 'name email role');
-
-      res.status(201).json({ message: 'Project created successfully', project });
-    } catch (error) {
-      console.error('Create project error:', error);
-      res.status(500).json({ message: 'Server error creating project' });
-    }
-  }
-);
-
+// @desc    Get single project
 // @route   GET /api/projects/:id
-// @desc    Get single project with tasks
-// @access  Private (member)
-router.get('/:id', protect, async (req, res) => {
+// @access  Private
+exports.getProject = async (req, res, next) => {
   try {
     const project = await Project.findById(req.params.id)
-      .populate('owner', 'name email')
+      .populate('admin', 'name email')
       .populate('members.user', 'name email role');
 
     if (!project) {
-      return res.status(404).json({ message: 'Project not found' });
-    }
-
-    // Check access
-    const isOwner = project.owner._id.toString() === req.user._id.toString();
-    const isMember = project.members.some((m) => m.user._id.toString() === req.user._id.toString());
-    const isAdmin = req.user.role === 'admin';
-
-    if (!isOwner && !isMember && !isAdmin) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    const tasks = await Task.find({ project: project._id })
-      .populate('assignedTo', 'name email')
-      .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 });
-
-    res.json({ project, tasks });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error fetching project' });
-  }
-});
-
-// @route   PUT /api/projects/:id
-// @desc    Update project
-// @access  Private (project admin or owner)
-router.put(
-  '/:id',
-  protect,
-  requireProjectAdmin,
-  [
-    body('name').optional().trim().isLength({ min: 2, max: 100 }),
-    body('status').optional().isIn(['planning', 'active', 'on-hold', 'completed']),
-    body('priority').optional().isIn(['low', 'medium', 'high']),
-    body('dueDate').optional().isISO8601(),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array(), message: errors.array()[0].msg });
-    }
-
-    try {
-      const allowedFields = ['name', 'description', 'status', 'priority', 'dueDate', 'tags'];
-      const updates = {};
-      allowedFields.forEach((field) => {
-        if (req.body[field] !== undefined) updates[field] = req.body[field];
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
       });
-
-      const project = await Project.findByIdAndUpdate(
-        req.params.id,
-        { $set: updates },
-        { new: true, runValidators: true }
-      )
-        .populate('owner', 'name email')
-        .populate('members.user', 'name email role');
-
-      res.json({ message: 'Project updated successfully', project });
-    } catch (error) {
-      res.status(500).json({ message: 'Server error updating project' });
     }
+
+    const isMember = project.members.some(
+      (m) => m.user._id.toString() === req.user._id.toString()
+    );
+
+    if (!isMember && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied',
+      });
+    }
+
+    const tasks = await Task.find({
+      project: project._id,
+    });
+
+    const stats = {
+      total: tasks.length,
+      todo: tasks.filter((t) => t.status === 'todo').length,
+      inProgress: tasks.filter(
+        (t) => t.status === 'in-progress'
+      ).length,
+      review: tasks.filter((t) => t.status === 'review').length,
+      done: tasks.filter((t) => t.status === 'done').length,
+      overdue: tasks.filter((t) => t.isOverdue).length,
+    };
+
+    res.json({
+      success: true,
+      project,
+      stats,
+    });
+  } catch (err) {
+    next(err);
   }
-);
+};
 
-// @route   DELETE /api/projects/:id
-// @desc    Delete project + all tasks
-// @access  Private (project owner or global admin)
-router.delete('/:id', protect, async (req, res) => {
+// @desc    Create project
+// @route   POST /api/projects
+// @access  Admin
+exports.createProject = async (req, res, next) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      errors: errors.array(),
+    });
+  }
+
   try {
-    const project = await Project.findById(req.params.id);
-    if (!project) return res.status(404).json({ message: 'Project not found' });
+    console.log('REQ BODY:', req.body);
+    console.log('REQ USER:', req.user);
 
-    const isOwner = project.owner.toString() === req.user._id.toString();
-    const isAdmin = req.user.role === 'admin';
+    const {
+      title,
+      description,
+      deadline,
+      color,
+    } = req.body;
 
-    if (!isOwner && !isAdmin) {
-      return res.status(403).json({ message: 'Only project owner or admin can delete this project' });
+    if (!title) {
+      return res.status(400).json({
+        success: false,
+        message: 'Project title is required',
+      });
     }
 
-    await Task.deleteMany({ project: project._id });
+    const project = await Project.create({
+      title,
+      description,
+      deadline,
+      color,
+      admin: req.user._id,
+      members: [
+        {
+          user: req.user._id,
+          role: 'admin',
+        },
+      ],
+    });
+
+    await project.populate('admin', 'name email');
+    await project.populate(
+      'members.user',
+      'name email role'
+    );
+
+    res.status(201).json({
+      success: true,
+      project,
+    });
+  } catch (err) {
+    console.log('CREATE PROJECT ERROR:', err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+      error: err,
+    });
+  }
+};
+
+// @desc    Update project
+// @route   PUT /api/projects/:id
+// @access  Admin / Project Admin
+exports.updateProject = async (req, res, next) => {
+  const errors = validationResult(req);
+
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      errors: errors.array(),
+    });
+  }
+
+  try {
+    const project = await Project.findById(
+      req.params.id
+    );
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    const isProjectAdmin =
+      project.admin.toString() ===
+      req.user._id.toString();
+
+    if (
+      !isProjectAdmin &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Only project admin can update',
+      });
+    }
+
+    const {
+      title,
+      description,
+      status,
+      deadline,
+      color,
+    } = req.body;
+
+    if (title) project.title = title;
+
+    if (description !== undefined) {
+      project.description = description;
+    }
+
+    if (status) project.status = status;
+
+    if (deadline) {
+      project.deadline = deadline;
+    }
+
+    if (color) project.color = color;
+
+    await project.save();
+
+    await project.populate('admin', 'name email');
+
+    await project.populate(
+      'members.user',
+      'name email role'
+    );
+
+    res.json({
+      success: true,
+      project,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Delete project
+// @route   DELETE /api/projects/:id
+// @access  Admin / Project Admin
+exports.deleteProject = async (req, res, next) => {
+  try {
+    const project = await Project.findById(
+      req.params.id
+    );
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    const isProjectAdmin =
+      project.admin.toString() ===
+      req.user._id.toString();
+
+    if (
+      !isProjectAdmin &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          'Only project admin can delete',
+      });
+    }
+
+    await Task.deleteMany({
+      project: project._id,
+    });
+
     await project.deleteOne();
 
-    res.json({ message: 'Project and all associated tasks deleted' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error deleting project' });
+    res.json({
+      success: true,
+      message:
+        'Project and all its tasks deleted',
+    });
+  } catch (err) {
+    next(err);
   }
-});
+};
 
-// @route   POST /api/projects/:id/members
 // @desc    Add member to project
-// @access  Private (project admin)
-router.post('/:id/members', protect, requireProjectAdmin, async (req, res) => {
+// @route   POST /api/projects/:id/members
+// @access  Admin / Project Admin
+exports.addMember = async (req, res, next) => {
   try {
     const { userId, role } = req.body;
 
-    if (!userId) return res.status(400).json({ message: 'User ID is required' });
+    const project = await Project.findById(
+      req.params.id
+    );
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    const isProjectAdmin =
+      project.admin.toString() ===
+      req.user._id.toString();
+
+    if (
+      !isProjectAdmin &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const project = req.project;
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
 
     const alreadyMember = project.members.some(
       (m) => m.user.toString() === userId
     );
+
     if (alreadyMember) {
-      return res.status(400).json({ message: 'User is already a member' });
+      return res.status(400).json({
+        success: false,
+        message: 'User already a member',
+      });
     }
 
-    project.members.push({ user: userId, role: role || 'member' });
+    project.members.push({
+      user: userId,
+      role: role || 'member',
+    });
+
     await project.save();
-    await project.populate('members.user', 'name email role');
 
-    res.json({ message: 'Member added successfully', project });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error adding member' });
+    await project.populate(
+      'members.user',
+      'name email role'
+    );
+
+    res.json({
+      success: true,
+      project,
+    });
+  } catch (err) {
+    next(err);
   }
-});
+};
 
-// @route   DELETE /api/projects/:id/members/:userId
 // @desc    Remove member from project
-// @access  Private (project admin)
-router.delete('/:id/members/:userId', protect, requireProjectAdmin, async (req, res) => {
+// @route   DELETE /api/projects/:id/members/:userId
+// @access  Admin / Project Admin
+exports.removeMember = async (
+  req,
+  res,
+  next
+) => {
   try {
-    const project = req.project;
-    const isOwner = project.owner.toString() === req.params.userId;
+    const project = await Project.findById(
+      req.params.id
+    );
 
-    if (isOwner) {
-      return res.status(400).json({ message: 'Cannot remove project owner' });
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: 'Project not found',
+      });
+    }
+
+    const isProjectAdmin =
+      project.admin.toString() ===
+      req.user._id.toString();
+
+    if (
+      !isProjectAdmin &&
+      req.user.role !== 'admin'
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized',
+      });
+    }
+
+    if (
+      project.admin.toString() ===
+      req.params.userId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Cannot remove project admin',
+      });
     }
 
     project.members = project.members.filter(
-      (m) => m.user.toString() !== req.params.userId
+      (m) =>
+        m.user.toString() !== req.params.userId
     );
+
     await project.save();
 
-    res.json({ message: 'Member removed successfully' });
-  } catch (error) {
-    res.status(500).json({ message: 'Server error removing member' });
+    res.json({
+      success: true,
+      message: 'Member removed',
+      project,
+    });
+  } catch (err) {
+    next(err);
   }
-});
-
-module.exports = router;
+};
