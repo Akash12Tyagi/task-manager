@@ -10,7 +10,7 @@ const hasProjectAccess = async (projectId, userId, userRole) => {
   const project = await Project.findById(projectId);
   if (!project) return { access: false, project: null };
   if (userRole === 'admin') return { access: true, project };
-  const isOwner = project.owner.toString() === userId.toString();
+  const isOwner = project.admin.toString() === userId.toString();
   const isMember = project.members.some((m) => m.user.toString() === userId.toString());
   return { access: isOwner || isMember, project };
 };
@@ -53,7 +53,7 @@ router.get('/', protect, async (req, res) => {
     const tasks = await Task.find(query)
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
-      .populate('project', 'name status')
+      .populate('project', 'title status')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -255,7 +255,7 @@ router.get('/stats/dashboard', protect, async (req, res) => {
   try {
     let projectQuery = req.user.role === 'admin'
       ? {}
-      : { $or: [{ owner: req.user._id }, { 'members.user': req.user._id }] };
+      : { $or: [{ admin: req.user._id }, { 'members.user': req.user._id }] };
 
     const userProjects = await Project.find(projectQuery).select('_id');
     const projectIds = userProjects.map((p) => p._id);
