@@ -35,13 +35,14 @@ exports.getProjectTasks = async (req, res, next) => {
 // @desc    Get my assigned tasks (across all projects)
 // @route   GET /api/tasks/my-tasks
 // @access  Private
-exports.getMyTasks = async (req, res, next) => {
+// Add this in taskController.js
+exports.getAllTasks = async (req, res, next) => {
   try {
-    const tasks = await Task.find({ assignedTo: req.user._id })
+    const query = req.user.role === 'admin' ? {} : { assignedTo: req.user._id };
+    const tasks = await Task.find(query)
+      .populate('assignedTo', 'name email')
       .populate('project', 'title color')
-      .populate('createdBy', 'name')
       .sort('-createdAt');
-
     res.json({ success: true, count: tasks.length, tasks });
   } catch (err) {
     next(err);

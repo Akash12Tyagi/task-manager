@@ -12,6 +12,7 @@ const {
   deleteTask,
 } = require('../controllers/taskController');
 
+router.get('/', protect, getAllTasks);
 // @route   GET /api/tasks/dashboard
 // @desc    Get dashboard stats
 // @access  Private
