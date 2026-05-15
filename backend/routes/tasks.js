@@ -16,7 +16,7 @@ const {
 // @desc    Get dashboard stats
 // @access  Private
 // NOTE: This must come BEFORE /:id route to avoid conflicts
-router.get('/dashboard', protect, getDashboardStats);
+router.get('/stats/dashboard', protect, getDashboardStats);
 
 // @route   GET /api/tasks/my-tasks
 // @desc    Get my assigned tasks
