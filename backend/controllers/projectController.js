@@ -39,15 +39,15 @@ exports.getProject = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Access denied' });
     }
 
-    // Attach task stats
     const tasks = await Task.find({ project: project._id });
+    const now = new Date();
     const stats = {
       total:      tasks.length,
       todo:       tasks.filter(t => t.status === 'todo').length,
       inProgress: tasks.filter(t => t.status === 'in-progress').length,
       review:     tasks.filter(t => t.status === 'review').length,
       done:       tasks.filter(t => t.status === 'done').length,
-      overdue:    tasks.filter(t => t.isOverdue).length,
+      overdue:    tasks.filter(t => t.dueDate && new Date(t.dueDate) < now && t.status !== 'done').length,
     };
 
     res.json({ success: true, project, stats });
@@ -58,20 +58,26 @@ exports.getProject = async (req, res, next) => {
 
 // @desc    Create project
 // @route   POST /api/projects
-// @access  Admin
+// @access  Admin only
 exports.createProject = async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
 
   try {
     const { title, description, deadline, color } = req.body;
 
     const project = await Project.create({
-      title, description, deadline, color,
+      title,
+      description: description || '',
+      deadline:    deadline    || null,
+      color:       color       || '#6366f1',
       admin: req.user._id,
     });
 
     await project.populate('admin', 'name email');
+    await project.populate('members.user', 'name email role');
 
     res.status(201).json({ success: true, project });
   } catch (err) {
@@ -84,7 +90,9 @@ exports.createProject = async (req, res, next) => {
 // @access  Admin / Project Admin
 exports.updateProject = async (req, res, next) => {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) return res.status(400).json({ success: false, errors: errors.array() });
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ success: false, errors: errors.array() });
+  }
 
   try {
     const project = await Project.findById(req.params.id);
@@ -96,11 +104,11 @@ exports.updateProject = async (req, res, next) => {
     }
 
     const { title, description, status, deadline, color } = req.body;
-    if (title)       project.title       = title;
+    if (title)                     project.title       = title;
     if (description !== undefined) project.description = description;
-    if (status)      project.status      = status;
-    if (deadline)    project.deadline    = deadline;
-    if (color)       project.color       = color;
+    if (status)                    project.status      = status;
+    if (deadline !== undefined)    project.deadline    = deadline;
+    if (color)                     project.color       = color;
 
     await project.save();
     await project.populate('admin', 'name email');
@@ -140,6 +148,11 @@ exports.deleteProject = async (req, res, next) => {
 exports.addMember = async (req, res, next) => {
   try {
     const { userId, role } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
     const project = await Project.findById(req.params.id);
     if (!project) return res.status(404).json({ success: false, message: 'Project not found' });
 
@@ -152,7 +165,9 @@ exports.addMember = async (req, res, next) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     const alreadyMember = project.members.some(m => m.user.toString() === userId);
-    if (alreadyMember) return res.status(400).json({ success: false, message: 'User already a member' });
+    if (alreadyMember) {
+      return res.status(400).json({ success: false, message: 'User already a member' });
+    }
 
     project.members.push({ user: userId, role: role || 'member' });
     await project.save();
@@ -181,8 +196,11 @@ exports.removeMember = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Cannot remove project admin' });
     }
 
-    project.members = project.members.filter(m => m.user.toString() !== req.params.userId);
+    project.members = project.members.filter(
+      m => m.user.toString() !== req.params.userId
+    );
     await project.save();
+    await project.populate('members.user', 'name email role');
 
     res.json({ success: true, message: 'Member removed', project });
   } catch (err) {

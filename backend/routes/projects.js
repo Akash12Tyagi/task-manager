@@ -13,61 +13,69 @@ const {
   removeMember,
 } = require('../controllers/projectController');
 
-// @route   GET /api/projects
-// @desc    Get all projects for current user
-// @access  Private
+// GET /api/projects
 router.get('/', protect, getProjects);
 
-// @route   GET /api/projects/:id
-// @desc    Get single project with stats
-// @access  Private (project member)
+// GET /api/projects/:id
 router.get('/:id', protect, getProject);
 
-// @route   POST /api/projects
-// @desc    Create new project
-// @access  Admin only
+// POST /api/projects — Admin only
 router.post(
   '/',
   protect,
   requireRole('admin'),
   [
-    body('title').trim().notEmpty().isLength({ min: 2, max: 100 }),
-    body('description').optional().trim().isLength({ max: 500 }),
-    body('deadline').optional().isISO8601(),
-    body('color').optional().trim(),
+    body('title')
+      .trim()
+      .notEmpty().withMessage('Title is required')
+      .isLength({ min: 2, max: 100 }).withMessage('Title must be 2–100 characters'),
+    body('description')
+      .optional({ nullable: true, checkFalsy: true })
+      .trim()
+      .isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+    body('deadline')
+      .optional({ nullable: true, checkFalsy: true })
+      .isISO8601().withMessage('Deadline must be a valid date'),
+    body('color')
+      .optional({ nullable: true, checkFalsy: true })
+      .trim(),
   ],
   createProject
 );
 
-// @route   PUT /api/projects/:id
-// @desc    Update project
-// @access  Admin / Project Admin
+// PUT /api/projects/:id
 router.put(
   '/:id',
   protect,
   [
-    body('title').optional().trim().isLength({ min: 2, max: 100 }),
-    body('description').optional().trim().isLength({ max: 500 }),
-    body('status').optional().isIn(['active', 'on-hold', 'completed', 'archived']),
-    body('deadline').optional().isISO8601(),
-    body('color').optional().trim(),
+    body('title')
+      .optional()
+      .trim()
+      .isLength({ min: 2, max: 100 }).withMessage('Title must be 2–100 characters'),
+    body('description')
+      .optional({ nullable: true, checkFalsy: true })
+      .trim()
+      .isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
+    body('status')
+      .optional()
+      .isIn(['active', 'on-hold', 'completed', 'archived']).withMessage('Invalid status'),
+    body('deadline')
+      .optional({ nullable: true, checkFalsy: true })
+      .isISO8601().withMessage('Deadline must be a valid date'),
+    body('color')
+      .optional({ nullable: true, checkFalsy: true })
+      .trim(),
   ],
   updateProject
 );
 
-// @route   DELETE /api/projects/:id
-// @desc    Delete project and all its tasks
-// @access  Admin / Project Admin
+// DELETE /api/projects/:id
 router.delete('/:id', protect, deleteProject);
 
-// @route   POST /api/projects/:id/members
-// @desc    Add member to project
-// @access  Admin / Project Admin
+// POST /api/projects/:id/members
 router.post('/:id/members', protect, addMember);
 
-// @route   DELETE /api/projects/:id/members/:userId
-// @desc    Remove member from project
-// @access  Admin / Project Admin
+// DELETE /api/projects/:id/members/:userId
 router.delete('/:id/members/:userId', protect, removeMember);
 
 module.exports = router;
