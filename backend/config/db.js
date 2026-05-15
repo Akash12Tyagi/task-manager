@@ -7,12 +7,12 @@ const connectDB = async () => {
       return true;
     }
 
-    if (!process.env.MONGODB_URI) {
-      console.error('MONGODB_URI is not defined in environment variables');
+    if (!process.env.MONGO_URI) {
+      console.error('MONGO_URI is not defined in environment variables');
       return false;
     }
 
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
